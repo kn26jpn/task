@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ファミリー スケジュール & タスク</title>
+  <style>
+    :root {
+      --primary-color: #4A90E2;
+      --bg-color: #F5F7FA;
+      --card-bg: #FFFFFF;
+      --text-color: #333333;
+      --border-color: #E1E8ED;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Header */
+    header { background: var(--card-bg); padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.25rem; font-weight: bold; }
+    .btn-icon { background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 0.5rem; }
+
+    /* Main Container */
+    main { flex: 1; padding: 1rem; overflow-x: hidden; }
+
+    /* View Switcher via CSS */
+    .calendar-container { display: flex; gap: 1rem; transition: transform 0.3s ease; }
+    
+    /* PC/Tablet: Multiple Months Horizon */
+    @media (min-width: 768px) {
+      .calendar-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .month-card { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem; }
+    }
+
+    /* Mobile: Single Month Swipe */
+    @media (max-width: 767px) {
+      .calendar-container { display: flex; width: 100%; }
+      .month-card { min-width: 100%; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); padding: 1rem; }
+    }
+
+    /* Month Card Layout */
+    .month-header { text-align: center; font-weight: bold; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); }
+    .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+    .day-name { font-size: 0.75rem; color: #888; padding: 4px 0; }
+    .day-cell { min-height: 60px; border: 1px solid #F0F0F0; border-radius: 4px; padding: 2px; font-size: 0.8rem; background: #FFF; }
+    .day-number { font-weight: bold; margin-bottom: 2px; }
+
+    /* Task Item */
+    .task-badge { font-size: 0.65rem; padding: 2px 4px; border-radius: 3px; color: #FFF; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+
+    /* Floating Action Button (FAB) */
+    .fab { position: fixed; bottom: 2rem; right: 2rem; width: 56px; height: 56px; border-radius: 50%; background: var(--primary-color); color: white; font-size: 2rem; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.2); cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; }
+
+    /* Modal Styling */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--card-bg); width: 90%; max-width: 500px; border-radius: 12px; padding: 1.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    .modal-header { font-size: 1.1rem; font-weight: bold; margin-bottom: 1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.3rem; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.6rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem; }
+    .btn { padding: 0.6rem 1.2rem; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; }
+    .btn-primary { background: var(--primary-color); color: white; }
+    .btn-secondary { background: #E1E8ED; color: var(--text-color); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1 id="app-title">ファミリーカレンダー</h1>
+    <button class="btn-icon" id="btn-settings">⚙️</button>
+  </header>
+
+  <main>
+    <div class="calendar-container" id="calendar-container">
+      <!-- JavaScriptにより月別カードが動的生成されます -->
+    </div>
+  </main>
+
+  <!-- タスク追加/編集ボタン -->
+  <button class="fab" id="btn-add">+</button>
+
+  <!-- タスク入力モーダル -->
+  <div class="modal" id="task-modal">
+    <div class="modal-content">
+      <div class="modal-header" id="modal-title">タスクを追加</div>
+      <form id="task-form">
+        <input type="hidden" id="task-id">
+        <div class="form-group">
+          <label>タイトル</label>
+          <input type="text" id="task-title" required>
+        </div>
+        <div class="form-group">
+          <label>カテゴリー</label>
+          <select id="task-category"></select>
+        </div>
+        <div class="form-group">
+          <label>日時</label>
+          <input type="datetime-local" id="task-datetime" required>
+        </div>
+        <div class="form-group">
+          <label>担当者</label>
+          <input type="text" id="task-assignee" placeholder="例: パパ、ママ">
+        </div>
+        <div class="form-group">
+          <label>メモ</label>
+          <textarea id="task-memo" rows="3"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="btn-modal-close">キャンセル</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div class="modal" id="settings-modal">
+    <div class="modal-content">
+      <div class="modal-header">API & カテゴリー設定</div>
+      <div class="form-group">
+        <label>GAS Web App URL</label>
+        <input type="text" id="gas-url" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="btn-settings-close">閉じる</button>
+        <button type="button" class="btn btn-primary" id="btn-settings-save">設定保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- アプリケーション状態 ---
+    const CONFIG_KEY = 'family_app_config';
+    const CACHE_KEY = 'family_app_data';
+
+    let state = {
+      gasUrl: localStorage.getItem(CONFIG_KEY) || '',
+      tasks: [],
+      categories: [
+        { name: '学校・習い事', color: '#4A90E2' },
+        { name: '家事・買い物', color: '#50E3C2' },
+        { name: 'イベント・旅行', color: '#F5A623' }
+      ],
+      currentMonthOffset: 0
+    };
+
+    // --- 初期化 ---
+    document.addEventListener('DOMContentLoaded', () => {
+      loadCache();
+      setupEventListeners();
+      renderCalendar();
+      fetchData(); // 非同期で最新データ取得
+    });
+
+    // --- キャッシュ・データ同期 ---
+    function loadCache() {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const data = JSON.parse(cached);
+        state.tasks = data.tasks || [];
+        if (data.categories && data.categories.length) state.categories = data.categories;
+      }
+    }
+
+    function saveCache() {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        tasks: state.tasks,
+        categories: state.categories
+      }));
+    }
+
+    async function fetchData() {
+      if (!state.gasUrl) return;
+      try {
+        const res = await fetch(state.gasUrl);
+        const data = await res.json();
+        state.tasks = data.tasks || [];
+        if (data.categories && data.categories.length) state.categories = data.categories;
+        saveCache();
+        renderCalendar();
+        populateCategories();
+      } catch (err) {
+        console.warn('オフライン表示中、または取得に失敗しました:', err);
+      }
+    }
+
+    // --- カレンダー描画ロジック ---
+    function renderCalendar() {
+      const container = document.getElementById('calendar-container');
+      container.innerHTML = '';
+
+      // PCは当月含む前後3ヶ月、スマホは当月+オフセットを表示
+      const monthsToRender = window.innerWidth >= 768 ? [-1, 0, 1] : [state.currentMonthOffset];
+
+      monthsToRender.forEach(offset => {
+        const date = new Date();
+        date.setMonth(date.getMonth() + offset);
+        
+        const card = createMonthCard(date.getFullYear(), date.getMonth());
+        container.appendChild(card);
+      });
+    }
+
+    function createMonthCard(year, month) {
+      const card = document.createElement('div');
+      card.className = 'month-card';
+
+      const title = document.createElement('div');
+      title.className = 'month-header';
+      title.textContent = `${year}年 ${month + 1}月`;
+      card.appendChild(title);
+
+      const grid = document.createElement('div');
+      grid.className = 'days-grid';
+
+      // 曜日ヘッダー
+      ['日', '月', '火', '水', '木', '金', '土'].forEach(day => {
+        const d = document.createElement('div');
+        d.className = 'day-name';
+        d.textContent = day;
+        grid.appendChild(d);
+      });
+
+      // 日付の計算
+      const firstDay = new Date(year, month, 1).getDay();
+      const lastDate = new Date(year, month + 1, 0).getDate();
+
+      // 空白セル
+      for (let i = 0; i < firstDay; i++) {
+        grid.appendChild(document.createElement('div'));
+      }
+
+      // 日付セル
+      for (let date = 1; date <= lastDate; date++) {
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        
+        const num = document.createElement('div');
+        num.className = 'day-number';
+        num.textContent = date;
+        cell.appendChild(num);
+
+        // タスク抽出＆描画
+        const currentDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+        const dayTasks = state.tasks.filter(t => t.datetime && t.datetime.startsWith(currentDateStr));
+
+        dayTasks.forEach(task => {
+          const cat = state.categories.find(c => c.name === task.category) || { color: '#888' };
+          const badge = document.createElement('div');
+          badge.className = 'task-badge';
+          badge.style.backgroundColor = cat.color;
+          badge.textContent = `${task.assignee ? `[${task.assignee}] ` : ''}${task.title}`;
+          badge.onclick = (e) => { e.stopPropagation(); openEditModal(task); };
+          cell.appendChild(badge);
+        });
+
+        grid.appendChild(cell);
+      }
+
+      card.appendChild(grid);
+      return card;
+    }
+
+    // --- イベント＆タッチスワイプ（スマホ用） ---
+    function setupEventListeners() {
+      // FAB & モーダル制御
+      document.getElementById('btn-add').onclick = () => openEditModal();
+      document.getElementById('btn-modal-close').onclick = () => closeModal('task-modal');
+      document.getElementById('btn-settings').onclick = () => {
+        document.getElementById('gas-url').value = state.gasUrl;
+        openModal('settings-modal');
+      };
+      document.getElementById('btn-settings-close').onclick = () => closeModal('settings-modal');
+
+      // 設定保存
+      document.getElementById('btn-settings-save').onclick = () => {
+        state.gasUrl = document.getElementById('gas-url').value.trim();
+        localStorage.setItem(CONFIG_KEY, state.gasUrl);
+        closeModal('settings-modal');
+        fetchData();
+      };
+
+      // タスク保存（楽観的UI更新）
+      document.getElementById('task-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const taskData = {
+          id: document.getElementById('task-id').value || null,
+          title: document.getElementById('task-title').value,
+          category: document.getElementById('task-category').value,
+          datetime: document.getElementById('task-datetime').value,
+          assignee: document.getElementById('task-assignee').value,
+          memo: document.getElementById('task-memo').value
+        };
+
+        // 1. ローカル状態を即座に更新 (Optimistic UI)
+        if (taskData.id) {
+          const idx = state.tasks.findIndex(t => t.id === taskData.id);
+          if (idx !== -1) state.tasks[idx] = taskData;
+        } else {
+          taskData.id = 'temp-' + Date.now();
+          state.tasks.push(taskData);
+        }
+        
+        saveCache();
+        renderCalendar();
+        closeModal('task-modal');
+
+        // 2. バックグラウンドでGASへデータ送信
+        if (state.gasUrl) {
+          try {
+            await fetch(state.gasUrl, {
+              method: 'POST',
+              mode: 'no-cors', // GASへのCORS制限回避
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'saveTask', ...taskData })
+            });
+          } catch (err) {
+            console.error('GAS同期失敗:', err);
+          }
+        }
+      };
+
+      // スマホ向けタッチスワイプ判定
+      let touchStartX = 0;
+      const container = document.getElementById('calendar-container');
+      
+      container.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+
+      container.addEventListener('touchend', e => {
+        if (window.innerWidth >= 768) return; // PC時はスワイプ無効
+        const touchEndX = e.changedTouches[0].screenX;
+        if (touchStartX - touchEndX > 50) {
+          // 左スワイプ -> 次の月
+          state.currentMonthOffset++;
+          renderCalendar();
+        } else if (touchEndX - touchStartX > 50) {
+          // 右スワイプ -> 前の月
+          state.currentMonthOffset--;
+          renderCalendar();
+        }
+      }, { passive: true });
+    }
+
+    // --- ユーティリティ ---
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function populateCategories() {
+      const select = document.getElementById('task-category');
+      select.innerHTML = state.categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    }
+
+    function openEditModal(task = null) {
+      populateCategories();
+      if (task) {
+        document.getElementById('modal-title').textContent = 'タスクを編集';
+        document.getElementById('task-id').value = task.id;
+        document.getElementById('task-title').value = task.title;
+        document.getElementById('task-category').value = task.category;
+        document.getElementById('task-datetime').value = task.datetime;
+        document.getElementById('task-assignee').value = task.assignee || '';
+        document.getElementById('task-memo').value = task.memo || '';
+      } else {
+        document.getElementById('modal-title').textContent = 'タスクを追加';
+        document.getElementById('task-form').reset();
+        document.getElementById('task-id').value = '';
+      }
+      openModal('task-modal');
+    }
+  </script>
+</body>
+</html>
